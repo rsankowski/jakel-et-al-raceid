@@ -40,14 +40,6 @@ df$Cluster <- factor(df$Cluster, levels = ord_clust)
 
 df <- df[df$Cluster %in% retain_cl,]
 
-#clean up cluster identity
-Mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
-
-Mode(df$Celltypes[df$Cluster==1])
-
 #export means per celltype gene expression table
 colnames(sc@ndata) <- gsub('\\.', ':', colnames(sc@ndata))
 ndata_summary <- data.frame(row.names = rownames(sc@ndata))
@@ -72,13 +64,25 @@ tsne
 dev.off()
 
 #Plot tsne map - Celltypes
-tsne <- tsne_plot(df, FILL = df$Celltypes, fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05) 
+tsne <- tsne_plot(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], FILL = df$Celltypes[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle')], fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05) +
+  theme(legend.position = 'None')
 
 tsne
 
 ggsave(paste0('plots/tsne/', date, '-stages-tsne-plot.pdf'))  
 
 svg(paste0('plots/tsne/', date, '-stages-tsne-plot.svg'), width = 8.57, height = 5.79)
+tsne
+dev.off()
+
+#tsne with legend
+tsne <- tsne_plot(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], FILL = df$Celltypes[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle')], fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05)
+
+tsne
+
+ggsave(paste0('plots/tsne/', date, '-stages-tsne-plot-with-legend.pdf'))  
+
+svg(paste0('plots/tsne/', date, '-stages-tsne-plot-with-legend.svg'), width = 8.57, height = 5.79)
 tsne
 dev.off()
 
@@ -111,6 +115,51 @@ ggsave(paste0('plots/tsne/', date,'-stages-marimekko-cluster-plot.pdf'))
 #marimekko stat plot
 mosaicGG(df, "Cluster", "Celltypes", rect_col = 'black', line_width = 0.1)
 ggsave(paste0('plots/tsne/', date,'-stages-marimekko-cluster-stat-plot.pdf'))
+
+#violin plot of gene expressions
+igf1r <- data.frame('IGF1R' = as.matrix(sc@ndata)['IGF1R', ]* min(sc@counts))
+rownames(igf1r) <- gsub('\\.', ':', rownames(igf1r))
+data <- cbind(df, igf1r[df$ID,])
+colnames(data)[11] <- 'IGF1R' 
+
+
+sorted <- data %>% group_by(Celltypes) %>%
+  summarise(expression = mean(IGF1R)) %>%
+  arrange(expression)
+
+data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted$Celltypes))
+
+ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, IGF1R, fill=Celltypes)) +
+  #geom_violin(scale='width') +
+  #geom_boxplot()+
+  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar",width = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y='IGF1R expression') #+
+  #scale_fill_manual(values = rev(colors_many))
+
+ggsave(paste0('plots/others/',date, '-celltype-dependent-igf1r-expression.pdf'))
+
+#pdgfra
+PDGFRA <- data.frame('PDGFRA' = as.matrix(sc@ndata)['PDGFRA', ]* min(sc@counts))
+rownames(PDGFRA) <- gsub('\\.', ':', rownames(PDGFRA))
+data <- cbind(df, PDGFRA[df$ID,])
+colnames(data)[11] <- 'PDGFRA' 
+
+data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted$Celltypes))
+
+ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, PDGFRA, fill=Celltypes)) +
+  #geom_violin(scale='width') +
+  #geom_boxplot()+
+  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar",width = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y='PDGFRA expression') #+
+#scale_fill_manual(values = rev(colors_many))
+
+ggsave(paste0('plots/others/',date, '-celltype-dependent-PDGFRA-expression.pdf'))
 
 
 #plot cell signatures
@@ -148,15 +197,18 @@ up_genes <- load_data(file.path('data/Cluster specific genes/Up'))
 source('~/Documents/Single cell analysis/Advanced-plots/20190102_plot_expmap.R')
 
 plot_genes <- unique(as.character(up_genes$GENEID))
-#plot_genes <- c('Hexb', 'Cx3cr1', 'Csf1r', 'P2ry12', 'Tmem119', 'Gpr34', 'Tgfbr1', 'Siglech', 'Slc2a5', 'Ccr5', 'Sall1', 'Jun', 'Fcrls', 'Mef2a', 'Mafb', 'Mertk')
-
+#plot_genes <- 'PDGFRA'
+  
 for (i in plot_genes) {
   tryCatch({
     svg(paste0('plots/tsne/',date,'-', i, '.svg'), width = 8.57, height = 5.79)
-    pl <- plot_expmap(gene=c(i), point_size = 5)
+    pl <- plot_expmap(gene=c(i), point_size = 2.5)
     print(pl)
     dev.off()
     
+    pdf(paste0('plots/tsne/',date,'-', i, '.pdf'), width = 8.57, height = 5.79)
+    print(pl)
+    dev.off()
   }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
   #on.exit(dev.off())
 }     
