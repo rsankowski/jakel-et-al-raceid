@@ -28,6 +28,8 @@ df$Condition <- factor(df$Condition, levels = c('Ctrl', 'MS'))
 
 df$Celltypes <- factor(df$Celltypes, levels = c('OPCs', 'COPs', 'ImOlGs', 'Oligo1', 'Oligo2', 'Oligo3', 'Oligo4', 'Oligo5', 'Oligo6', 'Astrocytes', 'Astrocytes2', 'Neuron1','Neuron2','Neuron3', 'Neuron4', 'Neuron5', 'Endothelial_cells1', 'Endothelial_cells2', 'Macrophages', 'Microglia_Macrophages', 'Immune_cells', 'Vasc_smooth_muscle','Pericytes'))
 
+df$Lesion <- factor(df$Lesion, levels = c('Ctrl', 'NAWM', 'A', 'CA', 'CI', 'RM'))
+
 cell_numbers <- numeric()
 for (i in 1:max(sc@cpart, na.rm = T)) {
   cell_numbers[i] <- length(na.omit(sc@cpart[sc@cpart==i]))
@@ -120,26 +122,42 @@ ggsave(paste0('plots/tsne/', date,'-stages-marimekko-cluster-stat-plot.pdf'))
 igf1r <- data.frame('IGF1R' = as.matrix(sc@ndata)['IGF1R', ]* min(sc@counts))
 rownames(igf1r) <- gsub('\\.', ':', rownames(igf1r))
 data <- cbind(df, igf1r[df$ID,])
-colnames(data)[11] <- 'IGF1R' 
+colnames(data)[12] <- 'IGF1R' 
 
 
-sorted <- data %>% group_by(Celltypes) %>%
+sorted <- data %>% group_by(Lesion, Celltypes) %>%
+  summarise(expression = mean(IGF1R)) %>%
+  arrange(expression)
+sorted2 <- data %>% group_by(Celltypes) %>%
   summarise(expression = mean(IGF1R)) %>%
   arrange(expression)
 
-data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted$Celltypes))
+
+data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted2$Celltypes))
 
 ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, IGF1R, fill=Celltypes)) +
-  #geom_violin(scale='width') +
-  #geom_boxplot()+
   stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar",width = 0) +
+  stat_summary(fun.data = mean_se, geom = "errorbar",width = 0) +
   coord_flip() +
   theme_minimal() +
-  labs(y='IGF1R expression') #+
+  labs(y='IGF1R expression') +
+  #facet_wrap(~Lesion, scales = 'free_x')#+
   #scale_fill_manual(values = rev(colors_many))
 
 ggsave(paste0('plots/others/',date, '-celltype-dependent-igf1r-expression.pdf'))
+
+
+ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, IGF1R, fill=Celltypes)) +
+  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar",width = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y='IGF1R expression') +
+  facet_wrap(~Lesion, scales = 'free_x')#+
+#scale_fill_manual(values = rev(colors_many))
+
+ggsave(paste0('plots/others/',date, '-celltype-and-lesion-dependent-igf1r-expression.pdf'))
+
 
 #pdgfra
 PDGFRA <- data.frame('PDGFRA' = as.matrix(sc@ndata)['PDGFRA', ]* min(sc@counts))
@@ -161,6 +179,73 @@ ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(C
 
 ggsave(paste0('plots/others/',date, '-celltype-dependent-PDGFRA-expression.pdf'))
 
+#highlight lesions
+fplt <- ggplot(df, aes(V1, V2, fill = Lesion)) +
+  geom_point(pch=21, size=6, stroke=0.1) +
+  scale_fill_brewer(palette = 'Dark2') +
+  facet_wrap(~Lesion, nrow = 1) +
+  theme_void() +
+  theme(legend.position = 'None',
+        text=element_text(size=20))
+
+svg('plots/tsne/lesion-types.svg', width = 30, height = 3.3)
+fplt
+dev.off()
+
+#marimekko stat plot
+mosaicGG2(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], "Celltypes", "Lesion", c(colors_many, colors_pat), rect_col = 'black', line_width = 0.1) +
+  scale_fill_brewer(palette = 'Dark2') 
+ggsave(paste0('plots/others/', date,'-stages-marimekko-cluster-plot.pdf'))
+
+#normalized cell counts
+cells_table <- df %>% group_by(Lesion, Celltypes) %>%
+  summarize(Freq = n()) %>%
+  dplyr::mutate(Ratio = Freq/sum(Freq))
+
+df$sum_cells_bin <- length(cells_table$Celltypes)
+
+cells_table_wide <- spread(cells_table, Celltypes, Freq, fill = 0)
+colSums(cells_table_wide[,3:25])
+
+#normalize the counts from url:https://rpubs.com/bbolker/sweep_divide
+cells_table_wide2 <- sweep(cells_table_wide[,3:25],MARGIN=2,FUN="/",STATS=colSums(cells_table_wide[,3:25]))
+cells_table_wide2 <- (sweep(cells_table_wide2, MARGIN = 2, FUN ="*", STATS=min(colSums(cells_table_wide[,3:25])))) 
+
+cells_table_wide[,3:25] <- cells_table_wide2
+colSums(cells_table_wide[,3:25])
+
+cells_table_scale <- gather(cells_table_wide, Celltypes, normalized_counts, OPCs:Pericytes)
+#cells_table_scale$Lesion <- factor(cells_table_scale$Lesion, levels = c('Ctrl', 'NAWM', 'A', 'CA', 'CI', 'RM'))
+cells_table <- left_join(cells_table, cells_table_scale)
+
+
+cells_table <- cells_table %>% 
+  group_by(Lesion) %>%
+  dplyr::mutate(Freq = sum(normalized_counts)) %>%
+  group_by(Celltypes) %>%
+  dplyr::mutate(normalized_Ratio = (normalized_counts/Freq))
+
+cells_table$Celltypes <- factor(cells_table$Celltypes, levels = c('OPCs', 'COPs', 'ImOlGs', 'Oligo1', 'Oligo2', 'Oligo3', 'Oligo4', 'Oligo5', 'Oligo6', 'Astrocytes', 'Astrocytes2', 'Neuron1','Neuron2','Neuron3', 'Neuron4', 'Neuron5', 'Endothelial_cells1', 'Endothelial_cells2', 'Macrophages', 'Microglia_Macrophages', 'Immune_cells', 'Vasc_smooth_muscle','Pericytes'))
+
+#plot normalized ratios
+cluster_age_stack_plot <- ggplot(cells_table[!cells_table$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Lesion, normalized_Ratio, fill = Celltypes)) + #, levels = c(4, 12, 7, 6, 8, 5, 3, 1, 9, 10, 2, 15, 19)
+  geom_bar(position = 'fill', stat = 'identity', color = 'black', lwd = 0.25) +
+  #geom_line(size = 2) +
+  theme_minimal() +
+  #scale_x_continuous(limits = c(0.5,19.5), breaks = c(1:19)) +
+  theme(panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        plot.background=element_blank(),
+        text=element_text(size=17)) +
+  scale_fill_manual(values = c(colors_many, colors_pat)) + 
+  labs(title = 'Cell contribution to Lesions', y='#cells in Lesion / total #cells', x='Lesion') +
+  scale_y_reverse() 
+
+cluster_age_stack_plot
+
+ggsave(paste0('plots/others/', date,'-normalized-stack-plot-celltypes-per-lesion.pdf'))
 
 #plot cell signatures
 signature_genes <- data.frame("monocytes"=c('CCR2', 'CLEC12A', 'PLAC8', 'FCN1', 'S100A9'),
