@@ -55,7 +55,7 @@ write.csv(ndata_summary, paste0('data/',date,'normalized-gene-counts-per-celltyp
 
 #condition tsne map
 tsne <- tsne_plot(df, FILL = df$Condition, fill_colors = c(colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05) +
-  scale_fill_brewer(palette = "Set1")
+  scale_fill_brewer(palette = "Dark2")
 
 tsne
 
@@ -66,7 +66,7 @@ tsne
 dev.off()
 
 #Plot tsne map - Celltypes
-tsne <- tsne_plot(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], FILL = df$Celltypes[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle')], fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05) +
+tsne <- tsne_plot(df, FILL = df$Celltypes, fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05) +
   theme(legend.position = 'None')
 
 tsne
@@ -78,7 +78,7 @@ tsne
 dev.off()
 
 #tsne with legend
-tsne <- tsne_plot(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], FILL = df$Celltypes[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle')], fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05)
+tsne <- tsne_plot(df, FILL = df$Celltypes, fill_colors = c(colors_many, colors_pat), point_outline = "black", point_size = 2.5, line_width = 0.05)
 
 tsne
 
@@ -191,6 +191,47 @@ fplt <- ggplot(df, aes(V1, V2, fill = Lesion)) +
 svg('plots/tsne/lesion-types.svg', width = 30, height = 3.3)
 fplt
 dev.off()
+
+#chi3l1
+CHI3L1 <- data.frame('CHI3L1' = as.matrix(sc@ndata)['CHI3L1', ]* min(sc@counts))
+rownames(CHI3L1) <- gsub('\\.', ':', rownames(CHI3L1))
+data <- cbind(df, CHI3L1[df$ID,])
+colnames(data)[11] <- 'CHI3L1' 
+
+
+sorted <- data %>% group_by(Lesion, Celltypes) %>%
+  summarise(expression = mean(CHI3L1)) %>%
+  arrange(expression)
+sorted2 <- data %>% group_by(Celltypes) %>%
+  summarise(expression = mean(CHI3L1)) %>%
+  arrange(expression)
+
+
+data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted2$Celltypes))
+
+ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, CHI3L1, fill=Celltypes)) +
+  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar",width = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y='CHI3L1 expression') +
+  #facet_wrap(~Lesion, scales = 'free_x')#+
+  #scale_fill_manual(values = rev(colors_many))
+  
+  ggsave(paste0('plots/others/',date, '-celltype-dependent-CHI3L1-expression.pdf'))
+
+
+ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, CHI3L1, fill=Celltypes)) +
+  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar",width = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(y='CHI3L1 expression') +
+  facet_wrap(~Lesion, scales = 'free_x')#+
+#scale_fill_manual(values = rev(colors_many))
+
+ggsave(paste0('plots/others/',date, '-celltype-and-lesion-dependent-CHI3L1-expression.pdf'))
+
 
 #marimekko stat plot
 mosaicGG2(df[!df$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], "Celltypes", "Lesion", c(colors_many, colors_pat), rect_col = 'black', line_width = 0.1) +
