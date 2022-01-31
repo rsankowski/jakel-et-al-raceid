@@ -122,7 +122,7 @@ ggsave(paste0('plots/tsne/', date,'-stages-marimekko-cluster-stat-plot.pdf'))
 igf1r <- data.frame('IGF1R' = as.matrix(sc@ndata)['IGF1R', ]* min(sc@counts))
 rownames(igf1r) <- gsub('\\.', ':', rownames(igf1r))
 data <- cbind(df, igf1r[df$ID,])
-colnames(data)[12] <- 'IGF1R' 
+colnames(data)[11] <- 'IGF1R' 
 
 
 sorted <- data %>% group_by(Lesion, Celltypes) %>%
@@ -136,8 +136,8 @@ sorted2 <- data %>% group_by(Celltypes) %>%
 data$Celltypes <- factor(data$Celltypes, levels = as.character(sorted2$Celltypes))
 
 ggplot(data[!data$Celltypes %in% c('Macrophages', 'Vasc_smooth_muscle'),], aes(Celltypes, IGF1R, fill=Celltypes)) +
-  stat_summary(fun.y = mean, geom = "bar", color = 'black', lwd=0.25) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar",width = 0) +
+  stat_summary(fun = mean, geom = "bar", color = 'black', lwd=0.25) + 
+  stat_summary(fun= mean_se, geom = "errorbar",width = 0) +
   coord_flip() +
   theme_minimal() +
   labs(y='IGF1R expression') +
